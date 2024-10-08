@@ -12,10 +12,19 @@ https://github.com/wellsdata/CompText_Jour/raw/main/data/black_press_extracted_t
 
 load the following libraries: tidyverse, textdata, tidytext, quanteda, rio
 
+
 ```{r}
+install.packages("textdata")
+install.packages("scico")
 
+```
 
-
+```{r}
+library(tidyverse)
+library(textdata)
+library(tidytext)
+library(quanteda)
+library(rio)
 ```
 
 # Tokenizing data

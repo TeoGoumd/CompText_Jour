@@ -7,12 +7,42 @@ output: html_document
 
 # Jour 389/689 Fall 2024:
 
+<<<<<<< Updated upstream
+=======
+Use the following code as a template with a new dataset:
+
+black_press_extracted_text_june_22_2024.csv
+
+See the blue hashtag instructions in the code chunks, such as:
+
+#import df
+
+#Show range of years covered
+
+#Create chart of years
+
+And do the same with the new dataset: black_press_extracted_text_june_22_2024.csv
+
+Hand in your completed assignment by uploading to your personal GitHub repository, obtaining the URL and submitting that to Elms
+```{r}
+install.packages("quanteda")
+
+```
+
+
+
+>>>>>>> Stashed changes
 ```{r}
 #load tidyverse, tidytext, rio and quanteda libraries
 
 library(tidyverse)
 library(tidytext)
+<<<<<<< Updated upstream
 
+=======
+library(rio)
+library(quanteda)
+>>>>>>> Stashed changes
 
 ```
 

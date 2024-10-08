@@ -2,7 +2,7 @@
 output: html_document
 editor_options: 
   markdown: 
-    wrap: 72///
+    wrap: 72
 ---
 
 ::: {style="text-align: center; color: #337DFF;"}
@@ -78,7 +78,6 @@ library(janitor)
 **Load Data**
 
 ```{r}
-
 SF <- rio::import("https://docs.google.com/spreadsheets/d/1-nkosLJKkfeLSl-UG82DDyiEw5-62kX2alS6ICG9iuk/edit#gid=552005485", sheet = "SF Police_Department_Calls_for_") 
 ```
 
@@ -203,11 +202,10 @@ by day
 library(dplyr)
 library(lubridate)
 
-calls_by_day <- SF %>%
-  count(call_date) %>%
-  arrange(desc(n))
-
-#August 15th, 2019 had the most 311 calls.
+most_calls_day <- SF %>%
+  count(call_time, name = "call_count") %>%
+  arrange(desc(call_count)) %>%
+  head(1)
 
 ```
 
@@ -216,17 +214,14 @@ calls_by_day <- SF %>%
 ```{r}
 
 library(dplyr)
-library(ggplot2)
 
-
-calls_by_day <- SF %>%
-  mutate(call_date = mdy(call_date)) %>%
-  count(call_date) %>%
-  arrange(desc(n))
-
-  ggplot(calls_by_day, aes(x = call_date, y = n, fill = n)) +
-  geom_col(position = "dodge") +
-  labs(title = "Chart calls by day")
+most_calls <- SF %>%
+count(call_date, name = "call_count") %>%
+  arrange(desc(call_count)) %>%
+  ggplot(aes(x=Year, y=n, fill=n))+
+  geom_col(position = "dodge")+
+labs(title = "The Day with the Most 311 Calls")
+  
 
 
 
@@ -297,11 +292,10 @@ write.csv(Days,"Days.csv")
 [slice_max to the
 rescue](https://dplyr.tidyverse.org/reference/slice.html)
 
-
 ```{r}
 
 top_5_days <- SF %>%
-  count(call_date, name = "call_count") %>%
+  count(call_time, name = "call_count") %>%
   slice_max(order_by = call_count, n = 5) %>%
   arrange(desc(call_count))
 
@@ -315,7 +309,7 @@ Pro tip: [slice_min](https://dplyr.tidyverse.org/reference/slice.html)
 ```{r}
 
 fewest_calls <- SF %>%
-  count(call_date, name = "call_count") %>%
+  count(call_time, name = "call_count") %>%
   slice_min(order_by = call_count, n = 5) %>%
   arrange(desc(call_count))
 
@@ -369,7 +363,6 @@ dates](https://github.com/profrobwells/Data-Analysis-Class-Jour-405v-5003/blob/m
 SF <- SF %>% 
   mutate(weekday = wday(call_date2, label=TRUE, abbr=FALSE))
 ```
-
 
 ```{r}
 SF %>%
