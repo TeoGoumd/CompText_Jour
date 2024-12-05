@@ -1,0 +1,489 @@
+---
+title: "Evolving Ideas and Narratives: Analyzing Raymond Moley's Themes, Keywords, and Sentiment Over Time"
+author: "Teona Goderdzishvili"
+date: "December 3, 2024 "
+output: html_document
+---
+___
+
+**<span style="font-size: 16px; font-weight: bold;">Research Questions</span>
+**
+
+**1.** How have Moley's ideas and themes evolved over time?
+
+**2.** How has the public perception of Moley, as reflected through descriptive language, changed throughout the years?
+
+I aim to analyze how Moley's most influential ideas developed and transformed across his work. Additionally, I want to understand how he was portrayed in contemporary papers and documents, focusing on the descriptive language and narratives used to characterize him.
+My methodological approach uses R for:
+
+- Term frequency analysis to identify key concepts and recurring themes
+- Keyword extraction to track specific ideas
+- Sentiment analysis to evaluate the emotional tone of the texts
+- Temporal trend visualization using ggplot to map changes in sentiment and themes over time
+
+The research combines computational text analysis with historical context to provide insights into both Moley's intellectual evolution and his public reception.
+
+**<span style="font-size: 16px; font-weight: bold;">Preliminary Work on Codebook</span>
+**
+
+**Economic Policy:** I'll track the frequency and context of key terms related to Moley's economic policy ideas, such as "new deal" and "reform". This will help me understand the evolution of his policy positions over time. 
+
+**Ideological Stances:** I'll analyze how Moley and his circle's ideological stances, such as "liberalism" and "conservatism", are portrayed in the articles. I'll note if there are any significant changes or shifts in their positions over the years. 
+
+**Character Names and Descriptions:** The articles mention of some of the key names of the state actors. I will gather full names and brief descriptions of their roles and relationships with Moley. 
+
+**Character ID:** Give each character a unique 4-digit number, beginning with 0001. If a character appears in more than one episode, code him or her each time, but use the same ID number.
+
+**Adjectives about Moley:** Moley became known as “the second strongest man in Washington”. They would also refer him as “Columbia university professor”, “Roosevelt’s brain trust”. I will explore how the adjectives related to Moley have been changing over the years. 
+
+___
+
+```{r setup, include=FALSE}
+
+library(tidyverse)  
+library(readtext)
+library(kableExtra)
+library(tidytext)
+library(textdata)
+library(pdftools)
+library(stringr)  
+library(RCurl)
+
+
+# Define consistent color palette for the entire document
+theme_colors <- list(
+    primary_text = "#333333",
+    secondary_text = "#4a4a4a",
+    background = "#e6e6e6",
+    accent = "#7c98ab",
+    positive = "#5b8a72",
+    negative = "#96706f",
+    grid = "#e5e5e5"
+)
+
+```
+
+
+```{r, echo=FALSE}
+folder_path <- "moley_texts" 
+txt_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
+
+read_all_texts <- function(folder_path = "moley_texts") {
+  if (!dir.exists(folder_path)) {
+    stop("Folder '", folder_path, "' not found!")
+  }
+ 
+  txt_files <- list.files(
+    path = folder_path,
+    pattern = "\\.txt$",
+    full.names = TRUE
+  )
+  
+  if (length(txt_files) == 0) {
+    stop("No .txt files found in folder '", folder_path, "'")
+  }
+  
+  text_data <- readtext(txt_files) %>%
+    as_tibble() %>%
+    mutate(
+      file_number = row_number(),
+      doc_id = basename(doc_id),
+      doc_id = str_remove(doc_id, "\\.txt$"),
+      year = as.numeric(str_extract(doc_id, "\\d{4}"))
+    )
+  
+  return(text_data)
+}
+
+text_data <- read_all_texts()
+text_stats <- text_data %>%
+  mutate(
+    doc_length = nchar(text),
+    word_count = str_count(text, "\\w+")
+  ) %>%
+  summarise(
+    total_docs = n(),
+    avg_length = mean(doc_length),
+    avg_words = mean(word_count),
+    min_length = min(doc_length),
+    max_length = max(doc_length)
+  )
+```
+
+
+```{r, echo=FALSE}
+# Display sample data with nice formatting
+cat("\n### Sample of the Data\n")
+text_data %>%
+  # Select only relevant columns
+  select(doc_id, year, file_number) %>%
+  # Take first few rows
+  head() %>%
+  knitr::kable(
+    format = "html",
+    caption = "First Few Documents"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "left"
+  )
+
+# Display statistics with nice formatting
+cat("\n### Descriptive Statistics\n")
+text_stats %>%
+  gather(metric, value) %>%
+  mutate(
+    metric = case_when(
+      metric == "total_docs" ~ "Total Documents",
+      metric == "avg_length" ~ "Average Character Count",
+      metric == "avg_words" ~ "Average Word Count",
+      metric == "min_length" ~ "Minimum Document Length",
+      metric == "max_length" ~ "Maximum Document Length"
+    ),
+    value = round(value, 2)
+  ) %>%
+  knitr::kable(
+    format = "html",
+    col.names = c("Metric", "Value")
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "left"
+  )
+
+
+```
+
+
+
+
+```{r, echo=FALSE, include=FALSE}
+read_all_texts <- function(folder_path = "moley_texts") {
+  if (!dir.exists(folder_path)) {
+    stop("Folder '", folder_path, "' not found!")
+  }
+  
+  txt_files <- list.files(
+    path = folder_path,
+    pattern = "\\.txt$",
+    full.names = TRUE
+  )
+  
+  if (length(txt_files) == 0) {
+    stop("No .txt files found in folder '", folder_path, "'")
+  }
+  
+  text_data <- readtext(txt_files) %>%
+    as_tibble() %>%
+    mutate(
+      file_number = row_number(),
+      doc_id = basename(doc_id),
+      doc_id = str_remove(doc_id, "\\.txt$"),
+      year = as.numeric(str_extract(doc_id, "\\d{4}"))
+    )
+  
+  return(text_data)
+}
+
+analyze_sentiments <- function(text_data) {
+  if (nrow(text_data) == 0) {
+    stop("No text data provided for analysis")
+  }
+  
+  words_df <- text_data %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stop_words)  
+  
+  afinn_sentiment <- words_df %>%
+    inner_join(get_sentiments("afinn"), by = "word") %>%
+    group_by(doc_id, year) %>%
+    summarise(
+      afinn_score = sum(value),
+      word_count = n(),
+      afinn_normalized = afinn_score / word_count,
+      .groups = 'drop'
+    )
+  
+  bing_sentiment <- words_df %>%
+    inner_join(get_sentiments("bing"), by = "word") %>%
+    count(doc_id, year, sentiment) %>%
+    pivot_wider(names_from = sentiment, values_from = n, values_fill = 0)
+  
+  sentiment_results <- afinn_sentiment %>%
+    left_join(bing_sentiment, by = c("doc_id", "year"))
+  
+  return(sentiment_results)
+}
+
+text_data <- read_all_texts("moley_texts")
+results <- analyze_sentiments(text_data)
+
+```
+
+
+
+```{r, echo=FALSE}
+
+# Display sentiment analysis results
+cat("\n### Sentiment Analysis Results\n")
+
+# Format and display AFINN sentiment scores
+results %>%
+  select(doc_id, year, afinn_normalized, positive, negative) %>%
+  mutate(
+    afinn_normalized = round(afinn_normalized, 3),
+    year = as.integer(year)
+  ) %>%
+  arrange(year) %>%
+  head(10) %>%  
+  knitr::kable(
+    format = "html",
+    col.names = c("Document", "Year", "AFINN Score", "Positive Words", "Negative Words"),
+    caption = "Sample of Sentiment Analysis Results"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "left"
+  )
+```
+
+
+```{r, echo=FALSE}
+# Get the most common positive and negative words
+words_with_sentiments <- text_data %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10) %>%
+  ungroup()
+
+# Display the results
+cat("\n### Most Common Sentiment Words\n")
+
+words_with_sentiments %>%
+  mutate(
+    sentiment = str_to_title(sentiment),
+    proportion = n/sum(n)
+  ) %>%
+  knitr::kable(
+    format = "html",
+    col.names = c("Word", "Sentiment", "Frequency", "Proportion"),
+    caption = "Top 10 Most Frequent Positive and Negative Words"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "left"
+  ) %>%
+  column_spec(2, 
+             color = ifelse(words_with_sentiments$sentiment == "Positive", "darkgreen", "darkred"))
+
+```
+
+
+
+
+```{r, echo=FALSE, include=FALSE}
+# Load necessary libraries
+library(tidyverse)
+library(tidytext)
+library(tm)
+
+folder_path <- "moley_texts"
+txt_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
+texts <- sapply(txt_files, readLines, USE.NAMES = FALSE) %>%
+  paste(collapse = " ")
+
+cleaned_text <- tolower(texts) %>%
+  str_replace_all("[^[:alpha:][:space:]]", "") %>%  
+  str_squish()  
+
+tokens <- unlist(str_split(cleaned_text, "\\s+"))
+data("stop_words")  
+filtered_tokens <- tokens[!tokens %in% stop_words$word]
+
+word_counts <- filtered_tokens %>%
+  table() %>%
+  as.data.frame() %>%
+  arrange(desc(Freq))
+
+# Rename columns for clarity
+colnames(word_counts) <- c("Word", "Frequency")
+
+```
+
+
+```{r, echo=FALSE}
+# Display the results nicely formatted
+cat("\n### Most Frequent Words in the Texts\n")
+
+head(word_counts, 10) %>%
+  mutate(
+    Percentage = (Frequency / sum(word_counts$Frequency) * 100),
+    Frequency = format(Frequency, big.mark=","),
+    Percentage = round(Percentage, 2)
+  ) %>%
+  knitr::kable(
+    format = "html",
+    caption = "Top 10 Most Frequent Words",
+    col.names = c("Word", "Frequency", "% of Total Words"),
+    align = c("l", "r", "r")  # Left-align words, right-align numbers
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "left"
+  ) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2:3, width = "100px")  # Removed the align parameter
+
+```
+
+
+
+```{r, echo=FALSE, include=FALSE}
+
+library(tidyverse)
+library(kableExtra)
+library(viridis)  # For better color palettes
+
+library(tidyverse)
+library(kableExtra)
+library(viridis)  
+# Your original code here - no changes needed for the function
+read_all_texts <- function(folder_path = "moley_texts") {
+  if (!dir.exists(folder_path)) {
+    stop("Folder '", folder_path, "' not found!")
+  }
+  
+  txt_files <- list.files(
+    path = folder_path,
+    pattern = "\\.txt$",
+    full.names = TRUE
+  )
+  
+  if (length(txt_files) == 0) {
+    stop("No .txt files found in folder '", folder_path, "'")
+  }
+  
+  text_data <- readtext(txt_files) %>%
+    as_tibble() %>%
+    mutate(
+      file_number = row_number(),
+      doc_id = basename(doc_id),
+      doc_id = str_remove(doc_id, "\\.txt$")
+    )
+  
+  return(text_data)
+}
+text_data <- read_all_texts()
+
+```
+
+
+```{r, echo=FALSE}
+
+# Create a visually appealing summary
+cat("\n## 📚 Document Collection Overview\n")
+# Calculate some additional metrics
+total_docs <- nrow(text_data)
+unique_docs <- n_distinct(text_data$doc_id)
+# Create a summary box
+summary_data <- data.frame(
+  Metric = c("Total Documents", "Unique Documents"),
+  Value = c(total_docs, unique_docs)
+)
+knitr::kable(summary_data, 
+             format = "html",
+             caption = "Collection Statistics") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    position = "center"
+  ) %>%
+  row_spec(0, bold = TRUE, color = "#333333", background = "#e6e6e6") %>%
+  column_spec(1:2, width = "200px") %>%
+  add_header_above(c(" " = 2), background = "#f5f5f5", color = "#333333")
+
+# Display sample documents
+cat("\n### 📄 Sample Documents\n")
+text_data %>%
+  select(doc_id, file_number) %>%
+  head(5) %>%
+  mutate(
+    doc_id = str_replace(doc_id, "^", "📄 ")
+  ) %>%
+  knitr::kable(
+    format = "html",
+    col.names = c("Document Name", "File Number"),
+    caption = "First Five Documents in Collection"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = FALSE,
+    position = "center"
+  ) %>%
+  row_spec(0, bold = TRUE, color = "#333333", background = "#e6e6e6") %>%
+  row_spec(1:5, color = "#4a4a4a") %>%
+  column_spec(1, bold = TRUE)
+
+```
+
+___
+
+```{r, echo=FALSE, include=FALSE}
+
+library(tidyverse)
+library(readtext)
+library(ggplot2)
+
+# Process files with years in filenames
+originals_w_dates <- text_data %>%
+  filter(!str_detect(doc_id, "AI")) %>%  # Exclude AI files
+  mutate(
+    year = as.numeric(str_extract(doc_id, "\\d{4}")),
+    source = "original"
+  )  
+
+# Load and process AI files
+ai_w_dates <- read.csv("https://raw.githubusercontent.com/wellsdata/CompText_Jour/refs/heads/main/code/Moley_for_students/moley_newsweek/extracted_AI_moley_index_nov_20.csv") %>%
+  mutate(source = "ai")
+
+# Combine both for yearly counts
+yearly_counts <- bind_rows(
+  originals_w_dates,
+  ai_w_dates
+) %>%
+  count(year, source, name = "number_of_texts") %>%
+  arrange(year)
+```
+
+
+```{r, echo=FALSE}
+ggplot(yearly_counts, aes(x = factor(year), y = number_of_texts)) +
+  geom_bar(stat = "identity", fill = "steelblue", width = 0.7) +
+  geom_text(aes(label = number_of_texts), vjust = -0.5) +  
+  theme_minimal() +
+  labs(
+    title = "Distribution of Newsweek Texts by Year",
+    subtitle = "Based on Newsweek's Articles",
+    x = "Year",
+    y = "Number of Articles",
+    caption = "Source: Moley Newsweek Dataset\nBy: Teona Goderdzishvili"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
+  )
+
+ggsave("moley_texts_per_year.png", width = 12, height = 8, dpi = 300)
+```
+

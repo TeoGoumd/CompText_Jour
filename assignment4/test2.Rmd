@@ -1,0 +1,224 @@
+---
+title: "test 2"
+author: "Teona"
+date: "2024-12-03"
+output: html_document
+---
+
+
+# Required Libraries
+```{r setup, include=FALSE}
+# List all required packages
+required_packages <- c(
+  "tidyverse",
+  "readtext",
+  "tidytext",
+  "textdata",
+  "tm",
+  "pdftools",
+  "RCurl"
+)
+
+# Install missing packages
+new_packages <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
+if(length(new_packages)) install.packages(new_packages)
+
+# Load all required packages
+lapply(required_packages, library, character.only = TRUE)
+
+# Set default chunk options
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  error = FALSE
+)
+```
+
+# Project Overview
+In this project, I explore two main research questions:
+
+1. How have ideas, themes, and adjectives evolved in Moley's work over time?
+2. What adjectives were used to describe Moley and how did they change over time?
+
+## Content Analysis Plan
+- Economic Policy: Track frequency and context of keywords like "new deal" and "reform"
+- Ideological Stances: Analyze evolution of terms like "liberalism" and "conservatism"
+- Character Analysis: Track key state actors and their relationships with Moley
+- Descriptive Terms: Analyze how Moley was described (e.g., "second strongest man in Washington")
+
+# Data Loading and Processing Functions
+```{r functions}
+# Main function to read and process text files
+read_all_texts <- function(folder_path = "moley_texts") {
+  # Verify folder exists
+  if (!dir.exists(folder_path)) {
+    stop("Folder '", folder_path, "' not found!")
+  }
+  
+  # Get list of text files
+  txt_files <- list.files(
+    path = folder_path,
+    pattern = "\\.txt$",
+    full.names = TRUE
+  )
+  
+  if (length(txt_files) == 0) {
+    stop("No .txt files found in folder '", folder_path, "'")
+  }
+  
+  # Read and process texts
+  text_data <- readtext(txt_files) %>%
+    as_tibble() %>%
+    mutate(
+      file_number = row_number(),
+      doc_id = basename(doc_id),
+      doc_id = str_remove(doc_id, "\\.txt$"),
+      year = as.numeric(str_extract(doc_id, "\\d{4}"))
+    )
+  
+  return(text_data)
+}
+
+# Function for sentiment analysis
+analyze_sentiments <- function(text_data) {
+  if (nrow(text_data) == 0) {
+    stop("No text data provided for analysis")
+  }
+  
+  # Create words dataframe
+  words_df <- text_data %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stop_words)
+  
+  # AFINN sentiment analysis
+  afinn_sentiment <- words_df %>%
+    inner_join(get_sentiments("afinn"), by = "word") %>%
+    group_by(doc_id, year) %>%
+    summarise(
+      afinn_score = sum(value),
+      word_count = n(),
+      afinn_normalized = afinn_score / word_count,
+      .groups = 'drop'
+    )
+  
+  # BING sentiment analysis
+  bing_sentiment <- words_df %>%
+    inner_join(get_sentiments("bing"), by = "word") %>%
+    count(doc_id, year, sentiment) %>%
+    pivot_wider(names_from = sentiment, values_from = n, values_fill = 0)
+  
+  # Combine results
+  sentiment_results <- afinn_sentiment %>%
+    left_join(bing_sentiment, by = c("doc_id", "year"))
+  
+  return(sentiment_results)
+}
+```
+
+# Data Loading and Initial Analysis
+```{r load_data}
+# Load text data
+text_data <- read_all_texts()
+
+# Load AI-generated data
+ai_data <- read.csv("https://raw.githubusercontent.com/wellsdata/CompText_Jour/refs/heads/main/code/Moley_for_students/moley_newsweek/extracted_AI_moley_index_nov_20.csv")
+
+# Combine datasets
+combined_data <- text_data %>%
+  mutate(
+    source = "original",
+    year = as.numeric(str_extract(doc_id, "\\d{4}"))
+  ) %>%
+  bind_rows(
+    ai_data %>%
+      mutate(source = "ai") %>%
+      select(doc_id = article_id, text = content, year, source)
+  )
+
+# Print basic statistics
+cat("\nDataset Statistics:\n")
+cat("Total documents:", nrow(combined_data), "\n")
+cat("Year range:", min(combined_data$year, na.rm = TRUE), 
+    "to", max(combined_data$year, na.rm = TRUE), "\n")
+```
+
+# Text Analysis
+```{r text_analysis}
+# Perform basic text cleaning and analysis
+text_stats <- combined_data %>%
+  mutate(
+    doc_length = nchar(text),
+    word_count = str_count(text, "\\w+")
+  ) %>%
+  group_by(source) %>%
+  summarise(
+    total_docs = n(),
+    avg_length = mean(doc_length),
+    avg_words = mean(word_count),
+    min_length = min(doc_length),
+    max_length = max(doc_length)
+  )
+
+print("Text Statistics by Source:")
+print(text_stats)
+
+# Word frequency analysis
+word_frequencies <- combined_data %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = TRUE) %>%
+  head(20)
+
+print("\nTop 20 Most Frequent Words:")
+print(word_frequencies)
+```
+
+# Visualization
+```{r visualization}
+# Create yearly distribution plot
+yearly_distribution <- combined_data %>%
+  count(year, source) %>%
+  ggplot(aes(x = year, y = n, fill = source)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Articles by Year and Source",
+    x = "Year",
+    y = "Number of Articles",
+    fill = "Source",
+    caption = "Source: Combined Moley Dataset"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+# Save plot
+ggsave("moley_distribution.png", yearly_distribution, 
+       width = 12, height = 8, dpi = 300)
+
+# Display plot
+print(yearly_distribution)
+```
+
+# Sentiment Analysis Results
+```{r sentiment}
+# Perform sentiment analysis
+sentiment_results <- analyze_sentiments(combined_data)
+
+# Visualize sentiment trends
+sentiment_plot <- sentiment_results %>%
+  ggplot(aes(x = year, y = afinn_normalized)) +
+  geom_smooth(method = "loess") +
+  geom_point(alpha = 0.5) +
+  theme_minimal() +
+  labs(
+    title = "Sentiment Trends Over Time",
+    x = "Year",
+    y = "Normalized Sentiment Score",
+    caption = "Source: AFINN Sentiment Analysis"
+  )
+
+print(sentiment_plot)
+```
