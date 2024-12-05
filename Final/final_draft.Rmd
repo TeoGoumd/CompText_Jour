@@ -55,7 +55,7 @@ library(ggplot2)
 ```
 
 #Data
-
+delete 59-122
 ```{r}
 #setwd("/Users/teona/Desktop/text analysis/assignment4")
 #**rsw comment: this cases the code to fail. it sets the directory to YOUR laptop: /Users/teona/Desktop**
@@ -121,6 +121,14 @@ print(text_stats)
 
 ```
 
+```{r}
+text_data <- read.csv("./moley_texts/moley_extracted_index.csv") %>% 
+  mutate(
+    new_path = str_replace_all(new_path, "AI_extracted_all", "moley_texts"),
+    date = ymd(date)) 
+  
+
+```
 
 #Number of rows and columns of the dataset
 ```{r}
@@ -144,47 +152,19 @@ cat("\nThe dataframe had", nrow(text_data) , "rows. \n" )
 # Set working directory to Final folder (if needed)
 # setwd("./Final")  # Uncomment this if you need to set the directory
 
-# First, let's clean and prepare the original data with years
-originals_w_dates <- text_data %>%
-  mutate(
-    year = as.numeric(str_extract(doc_id, "\\d{4}"))
-  )
 
-# Read the AI dataset from the Final folder
-ai_w_dates <- read.csv("moley_index.csv") %>%
-  mutate(
-    year = as.numeric(Year)  # Use the Year column from your CSV
-  )
 
-# Create yearly counts for the original data
-originals_counts <- originals_w_dates %>%
-  group_by(year) %>%
-  summarise(
-    number_of_texts = n()
-  )
-
-# Create yearly counts for the AI data
-ai_counts <- ai_w_dates %>%
-  group_by(Year) %>%
-  summarise(
-    number_of_texts = n()
-  ) %>%
-  rename(year = Year)
 
 # Combine both counts and sum up articles per year
-yearly_counts <- full_join(originals_counts, ai_counts, by = "year") %>%
-  replace_na(list(number_of_texts.x = 0, number_of_texts.y = 0)) %>%
-  mutate(
-    total_texts = number_of_texts.x + number_of_texts.y
-  ) %>%
-  select(year, total_texts) %>%
-  rename(number_of_texts = total_texts) %>%
-  arrange(year)
+yearly_counts <- text_data %>% 
+  count(Year)
+
 
 # Create the visualization
-ggplot(yearly_counts, aes(x = factor(year), y = number_of_texts)) +
+ggplot(yearly_counts, aes(x = factor(Year), y = n)) +
   geom_bar(stat = "identity", fill = "steelblue", width = 0.7) +
-  geom_text(aes(label = number_of_texts), vjust = -0.5) +
+  geom_text(aes(label = n), vjust = -0.5) +
+  scale_y_continuous(limits=c(0,20)) +
   theme_minimal() +
   labs(
     title = "Distribution of Moley Articles by Year",
@@ -201,6 +181,8 @@ ggplot(yearly_counts, aes(x = factor(year), y = number_of_texts)) +
     panel.grid.minor.x = element_blank()
   )
 
+#rsw comment: fix y axis by scaling it to 20
+
 # Print the yearly counts
 print("Yearly counts of all articles:")
 print(yearly_counts)
@@ -209,9 +191,56 @@ print(yearly_counts)
 ggsave("moley_texts_per_year_combined.png", width = 12, height = 8, dpi = 300)
 ```
 
+text compiler first
+```{r}
+
+folder_path <- "moley_texts" 
+txt_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
+
+
+read_all_texts <- function(folder_path = "moley_texts") {
+  if (!dir.exists(folder_path)) {
+    stop("Folder '", folder_path, "' not found!")
+  }
+
+ 
+  txt_files <- list.files(
+    path = folder_path,
+    pattern = "\\.txt$",
+    full.names = TRUE
+  )
+  
+  if (length(txt_files) == 0) {
+    stop("No .txt files found in folder '", folder_path, "'")
+  }
+
+  
+  text_files <- readtext(txt_files) %>%
+    as_tibble() %>%
+    mutate(
+      file_number = row_number(),
+      doc_id = basename(doc_id),
+      doc_id = str_remove(doc_id, "\\.txt$"),
+      year = as.numeric(str_extract(doc_id, "\\d{4}"))
+    )
+  
+  return(text_files)
+}
+
+
+text_files <- read_all_texts()
+
+cat("Sample of the data:
+")
+```
+
+
+
+
+
 ```{r}
 # Create bigrams from the text
-bigrams <- text_data %>%
+bigrams <- text_files %>%
   unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
   separate(bigram, c("word1", "word2"), sep = " ") %>%
   # Remove stop words
